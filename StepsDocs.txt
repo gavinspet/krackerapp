@@ -1,0 +1,95 @@
+1. Project Setup
+
+Created a folder: krackerapp/
+
+Inside it we planned 3 parts:
+
+server/ → backend in C++ (Drogon)
+
+scripts/ → helper scripts (build.sh etc.)
+
+ops/ → database SQL files (schema/seed)
+
+Initialized git repo, added first files.
+
+2. Minimal Drogon Server
+
+Installed Drogon framework (C++ web framework).
+
+Created a main.cpp with:
+
+/health endpoint → always returns { "ok": true }
+
+Learned to build with CMake:
+
+cmake -S . -B build
+cmake --build build
+./build/krackerapp_server
+
+
+Verified with:
+
+curl http://localhost:8080/health
+
+3. Database Choice → PostgreSQL
+
+Picked PostgreSQL instead of MySQL because:
+
+Better JSON support
+
+Works great with Drogon ORM
+
+Strong reliability + open-source
+
+Installed Postgres locally.
+
+Created DB and user:
+
+createdb krackerdb
+createuser kracker -P   # password = krackerpw
+
+
+Tested with:
+
+psql postgresql://kracker:krackerpw@localhost/krackerdb -c "select 1;"
+
+4. First DB Health Endpoint (Problems & Fixes)
+
+Initially tried Drogon’s ORM (app().getDbClient()).
+
+Got error: "DbClient is null"
+
+Root causes:
+
+Config file key mismatch (passwd vs password).
+
+Drogon version differences.
+
+To keep moving, we bypassed Drogon ORM and connected directly with libpq (the official Postgres C library):
+
+Installed headers: sudo apt install libpq-dev
+
+Updated CMake to link PostgreSQL::PostgreSQL
+
+In /db/health handler we used:
+
+PGconn* conn = PQconnectdb("host=127.0.0.1 port=5432 dbname=krackerdb user=kracker password=krackerpw");
+if (PQstatus(conn) == CONNECTION_OK) {
+    // success
+}
+
+
+✅ Finally, /db/health returned {"ok":true,"db":"up"}
+
+5. What Works Right Now
+
+Server starts from server/.
+
+Endpoints available:
+
+/health → always { "ok": true }
+
+/db/health → checks DB connection with libpq.
+
+DB connectivity proven (Postgres is alive, credentials work).
+
