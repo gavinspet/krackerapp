@@ -1,0 +1,184 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>KrackerApp – Minimal UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 920px; margin: 24px auto; padding: 0 12px; }
+    h1 { margin-bottom: 4px; }
+    small { color: #666; }
+    section { border: 1px solid #eee; border-radius: 10px; padding: 14px; margin: 14px 0; }
+    button { padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; cursor: pointer; }
+    input, textarea { padding: 8px; border-radius: 8px; border: 1px solid #ddd; width: 100%; box-sizing: border-box; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .ok { color: #0a0; }
+    .err { color: #a00; }
+    .stack { display: grid; gap: 10px; }
+    .list { border-top: 1px dashed #ddd; margin-top: 10px; padding-top: 10px; }
+    .pill { background: #f2f2f2; border-radius: 999px; padding: 2px 8px; display: inline-block; margin: 2px 4px 0 0; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>KrackerApp</h1>
+  <small>quick demo UI (no framework)</small>
+
+  <section>
+    <h3>Server Health</h3>
+    <div class="row">
+      <button onclick="probe('/health')">/health</button>
+      <button onclick="probe('/db/health')">/db/health</button>
+    </div>
+    <pre id="health" class="mono"></pre>
+  </section>
+
+  <section>
+    <h3>Auth</h3>
+    <div class="stack">
+      <div class="row">
+        <input id="reg_user" placeholder="username (e.g., neo)" />
+        <input id="reg_email" placeholder="email (optional)" />
+      </div>
+      <input id="reg_pass" type="password" placeholder="password" />
+      <button onclick="register()">Register</button>
+    </div>
+
+    <div class="stack" style="margin-top: 10px;">
+      <input id="login_uoe" placeholder="username_or_email" />
+      <input id="login_pass" type="password" placeholder="password" />
+      <button onclick="login()">Login</button>
+    </div>
+
+    <div class="stack" style="margin-top: 10px;">
+      <button onclick="me()">/api/v1/me</button>
+      <div>Token: <span id="token_state" class="mono pill"></span></div>
+    </div>
+
+    <pre id="auth" class="mono"></pre>
+  </section>
+
+  <section>
+    <h3>Conversations</h3>
+    <div class="stack">
+      <div class="row">
+        <input id="conv_participants" placeholder='participant_ids (comma-separated UUIDs)' />
+        <input id="conv_title" placeholder='title (optional)' />
+      </div>
+      <label><input type="checkbox" id="conv_is_group" /> is_group</label>
+      <button onclick="createConversation()">Create Conversation</button>
+      <button onclick="listConversations()">List My Conversations</button>
+    </div>
+    <pre id="conv" class="mono"></pre>
+  </section>
+
+  <section>
+    <h3>Messages</h3>
+    <div class="stack">
+      <input id="msg_convo" placeholder="conversation_id" />
+      <textarea id="msg_content" placeholder="message content"></textarea>
+      <button onclick="sendMessage()">Send</button>
+      <div class="row">
+        <input id="msg_before" placeholder="before (ISO, optional)" />
+        <input id="msg_limit" placeholder="limit (default 50)" />
+      </div>
+      <button onclick="listMessages()">List Messages</button>
+    </div>
+    <pre id="msgs" class="mono"></pre>
+  </section>
+
+  <script>
+    const out = id => document.getElementById(id);
+    let token = "";
+
+    function setToken(t) {
+      token = t || "";
+      out('token_state').textContent = token ? (token.slice(0, 16) + '…') : '(none)';
+    }
+
+    async function probe(path) {
+      const res = await fetch(path);
+      out('health').textContent = path + " -> " + (await res.text());
+    }
+
+    async function register() {
+      const username = out('reg_user').value.trim();
+      const email    = out('reg_email').value.trim();
+      const password = out('reg_pass').value;
+      const res = await fetch('/api/v1/auth/register', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({username, email, password})
+      });
+      const data = await res.json();
+      if (data.accessToken) setToken(data.accessToken);
+      out('auth').textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function login() {
+      const username_or_email = out('login_uoe').value.trim();
+      const password = out('login_pass').value;
+      const res = await fetch('/api/v1/auth/login', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({username_or_email, password})
+      });
+      const data = await res.json();
+      if (data.accessToken) setToken(data.accessToken);
+      out('auth').textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function me() {
+      if (!token) return out('auth').textContent = 'No token. Login or register first.';
+      const res = await fetch('/api/v1/me', { headers: { Authorization: 'Bearer ' + token }});
+      out('auth').textContent = JSON.stringify(await res.json(), null, 2);
+    }
+
+    async function createConversation() {
+      if (!token) return out('conv').textContent = 'No token.';
+      const parts = out('conv_participants').value.trim();
+      const participant_ids = parts ? parts.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const title = out('conv_title').value.trim();
+      const is_group = out('conv_is_group').checked;
+      const res = await fetch('/api/v1/conversations', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', Authorization:'Bearer ' + token},
+        body: JSON.stringify({participant_ids, title, is_group})
+      });
+      out('conv').textContent = JSON.stringify(await res.json(), null, 2);
+    }
+
+    async function listConversations() {
+      if (!token) return out('conv').textContent = 'No token.';
+      const res = await fetch('/api/v1/conversations', { headers: { Authorization: 'Bearer ' + token }});
+      out('conv').textContent = JSON.stringify(await res.json(), null, 2);
+    }
+
+    async function sendMessage() {
+      if (!token) return out('msgs').textContent = 'No token.';
+      const conversation_id = out('msg_convo').value.trim();
+      const content = out('msg_content').value;
+      const res = await fetch('/api/v1/messages', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json', Authorization:'Bearer ' + token},
+        body: JSON.stringify({conversation_id, content})
+      });
+      out('msgs').textContent = JSON.stringify(await res.json(), null, 2);
+    }
+
+    async function listMessages() {
+      if (!token) return out('msgs').textContent = 'No token.';
+      const conversation_id = out('msg_convo').value.trim();
+      const before = out('msg_before').value.trim();
+      const limit  = out('msg_limit').value.trim();
+      const url = new URL('/api/v1/messages', location.origin);
+      url.searchParams.set('conversation_id', conversation_id);
+      if (before) url.searchParams.set('before', before);
+      if (limit)  url.searchParams.set('limit', limit);
+      const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token }});
+      out('msgs').textContent = JSON.stringify(await res.json(), null, 2);
+    }
+
+    // Quality-of-life: if you already registered via curl, paste token here once
+    // setToken('eyJhbGciOiJIUzI1NiJ9...');
+  </script>
+</body>
+</html>
